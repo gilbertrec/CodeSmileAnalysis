@@ -3,8 +3,8 @@ import requests
 
 # Input and Output file paths
 input_csv = 'NICHE_large_sampled.csv'  # Replace with your input CSV file path
-output_csv = 'release_large_output.csv'  # Replace with your desired output CSV file path
-
+output_csv = 'release_large_output_extra.csv'  # Replace with your desired output CSV file path
+mined_csv = 'release_large_output.csv'  # Replace with your desired output CSV file path
 GITHUB_TOKEN = ""  # Replace with your GitHub personal access token
 GITHUB_API_URL = "https://api.github.com"
 
@@ -42,17 +42,25 @@ def get_release_commits(owner, repo):
 
     return commit_hashes
 
+def get_mined_commits(reader):
+    """read already mined commits from a file"""
+    mined_commits = set()
+    for row in reader:
+        mined_commits.add(row['Project'])
+    return mined_commits
 def main():
     # Read the input CSV
-    with open(input_csv, 'r') as infile, open(output_csv, 'w', newline='') as outfile:
+    with open(input_csv, 'r') as infile, open(output_csv, 'w', newline='') as outfile, open(mined_csv, 'r') as mined_file:
         reader = csv.DictReader(infile)
+        mined_reader = csv.DictReader(mined_file)
         writer = csv.writer(outfile)
-
+        mined_projects = get_mined_commits(mined_reader)
         # Write header for the output CSV
         writer.writerow(['Project', 'CommitHash'])
         projects = set()
         for row in reader:
-            projects.add(row['project_name'])
+            if row['project_name'] not in mined_projects:
+                projects.add(row['project_name'])
 
         for project in projects:
             owner = project.split('/')[0]
