@@ -17,14 +17,20 @@ def extract_commit_details(repo_path, commit_id):
     """Extract commit details using PyDriller."""
     details = []
 
-    for commit in Repository(repo_path, single=commit_id).traverse_commits():
-        modified_files = separator.join([mod.filename for mod in commit.modified_files])
-        details.append({
-            'commit_date': commit.committer_date,
-            'commit_number_from_start': commit.order,
-            'commit_message': commit.msg,
-            'modified_files': modified_files
-        })
+    # Initialize a counter for commit order
+    commit_counter = 0
+
+    for commit in Repository(repo_path).traverse_commits():
+        commit_counter += 1
+        if commit.hash == commit_id:
+            modified_files = separator.join([mod.filename for mod in commit.modified_files])
+            details.append({
+                'commit_date': commit.committer_date,
+                'commit_number_from_start': commit_counter,
+                'commit_message': commit.msg,
+                'modified_files': modified_files
+            })
+            break
     return details
 
 
