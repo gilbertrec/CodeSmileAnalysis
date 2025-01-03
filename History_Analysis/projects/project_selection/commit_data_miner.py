@@ -44,7 +44,7 @@ def analyser(input_csv_path,base_path):
 
     for project in projects:
         repo_path = project['project_name']
-        repo_path = os.path.join(base_path,repo_path)# Local path to the repository
+        repo_path = os.path.join(base_path,repo_path.replace("/",""))# Local path to the repository
         commit_id = project['Commit_ID']  # Commit hash
 
         if os.path.exists(repo_path):
