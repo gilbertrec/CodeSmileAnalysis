@@ -1,100 +1,90 @@
-import os
-import time
+import csv
 import requests
+import os
 import pandas as pd
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from datetime import datetime
 
-def create_github_session(token):
-    session = requests.Session()
-    session.headers.update({
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json"
-    })
-
-    retry_strategy = Retry(
-        total=5,
-        backoff_factor=60,
-        status_forcelist=[429, 500, 502, 503, 504]
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-
-    return session
-def get_commit_details(session, repo_name, commit_sha):
-    url = f"https://api.github.com/repos/{repo_name}/commits/{commit_sha}"
-    print(f"Fetching details for commit {commit_sha} of project {repo_name}...")
-
-    response = session.get(url)
-    print(f"Response received for commit {commit_sha}: {response.status_code}")
-
-    if response.status_code == 403:
-        print("Rate limit reached. Waiting for 60 seconds...")
-        time.sleep(60)
-        return None
-
-    if response.status_code != 200:
-        print(f"Failed to fetch commit {commit_sha} for {repo_name}: {response.status_code}")
-        return None
-
-    commit_details = response.json()
-    commit_date = commit_details["commit"]["committer"]["date"]
-    commit_message = commit_details["commit"]["message"]
-    files_modified = [file["filename"] for file in commit_details.get("files", [])]
-
-    return {
-        "commit_date": commit_date,
-        "commit_message": commit_message,
-        "files_modified": files_modified
-    }
+# GitHub API Token (set your GitHub Personal Access Token here)
+GITHUB_TOKEN = ""  # Recommended to set as an environment variable
+GITHUB_API_URL = "https://api.github.com/repos"
+HEADERS = {
+    'Authorization': f'token {GITHUB_TOKEN}'
+}
 
 
-def collect_project_commit_details_from_csv(csv_path, token):
-    session = create_github_session(token)
-    all_projects_data = []
+def fetch_commit_details(project_name, commit_id):
+    """Fetch commit details from GitHub API."""
+    try:
+        url = f"{GITHUB_API_URL}/{project_name}/commits/{commit_id}"
+        response = requests.get(url, headers=HEADERS)
 
-    # Load project names and commit IDs from the CSV
-    project_data = pd.read_csv(csv_path)
-    if not {"project_name", "Commit_ID"}.issubset(project_data.columns):
-        print("Error: The CSV file must contain 'project_name' and 'Commit_ID' columns.")
-        return None
-    project_data = project_data[["project_name", "Commit_ID"]]
-    #remove duplicates
-    project_data = project_data.drop_duplicates()
-    for _, row in project_data.iterrows():
-        project_name = row["project_name"]
-        commit_id = row["Commit_ID"]
+        if response.status_code == 200:
+            commit_data = response.json()
+            commit_date = commit_data['commit']['committer']['date']
+            commit_message = commit_data['commit']['message']
+            return commit_date, commit_message
+        else:
+            print(f"Error fetching data for {project_name}/{commit_id}: {response.status_code}")
+            return None, None
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        return None, None
 
-        print(f"Collecting data for project: {project_name}, commit: {commit_id}")
-        try:
-            commit_details = get_commit_details(session, project_name, commit_id)
-            if commit_details:
-                commit_details["project_name"] = project_name
-                commit_details["Commit_ID"] = commit_id
-                all_projects_data.append(commit_details)
-        except Exception as e:
-            print(f"Error fetching data for {project_name}, commit {commit_id}: {e}")
 
-    return all_projects_data
-def main(mode):
-    # Specify the path to the CSV file containing project names
-    csv_path = f"NICHE_{mode}_sampled.csv"  # Replace with your CSV file path
-    github_token = ""  # Replace with your GitHub token
+def append_commit_details(input_csv, output_csv):
+    """Append commit details to the input CSV and save as output CSV."""
+    # Load the input CSV
+    df = pd.read_csv(input_csv)
 
-    # Collect commit details for all projects listed in the CSV
-    all_commit_data = collect_project_commit_details_from_csv(csv_path, github_token)
+    # Check for required columns
+    if 'Commit_ID' not in df.columns or 'project_name' not in df.columns:
+        print("Input CSV must contain 'CommitID' and 'project_name' columns.")
+        return
 
-    # Convert the collected data to a DataFrame
-    if all_commit_data:
-        df = pd.DataFrame(all_commit_data)
-        output_path = f"commit_details_{mode}.csv"
-        df.to_csv(output_path, index=False)
-        print(f"Commit details saved to {output_path}")
-    else:
-        print("No commit data collected.")
+    # Add new columns
+    df['Commit_date'] = None
+    df['Commit_message'] = None
+
+    # Fetch commit details for each row
+    for index, row in df.iterrows():
+        commit_id = row['Commit_ID']
+        project_name = row['project_name']
+
+        commit_date, commit_message = fetch_commit_details(project_name, commit_id)
+
+        if commit_date and commit_message:
+            df.at[index, 'Commit_date'] = commit_date
+            df.at[index, 'Commit_message'] = commit_message
+
+    # Save the updated DataFrame to a new CSV
+    df.to_csv(output_csv, index=False)
+    print(f"Updated CSV saved to {output_csv}")
+
 
 if __name__ == "__main__":
-    main("large")
-    main("medium")
-    main("small")
+    mode = "large"
+
+    input_csv = "NICHE_large_sampled.csv"  # Replace with your input CSV file path
+    output_csv = "commit_NICHE_large_sampled.csv"  # Replace with your desired output CSV file path
+
+    if not GITHUB_TOKEN:
+        print("Please set your GitHub Personal Access Token as an environment variable GITHUB_TOKEN.")
+    else:
+        append_commit_details(input_csv, output_csv)
+
+    mode = "medium"
+
+    input_csv = "NICHE_medium_sampled.csv"  # Replace with your input CSV file path
+    output_csv = "commit_NICHE_medium_sampled.csv"  # Replace with your desired output CSV file path
+
+    if not GITHUB_TOKEN:
+        print("Please set your GitHub Personal Access Token as an environment variable GITHUB_TOKEN.")
+    else:
+        append_commit_details(input_csv, output_csv)
+
+    mode = "small"
+
+    input_csv = "NICHE_small_sampled.csv"  # Replace with your input CSV file path
+    output_csv = "commit_NICHE_small_sampled.csv"  # Replace with your desired output CSV file path
+
+    append_commit_details(input_csv, output_csv)
